@@ -776,7 +776,7 @@
                                     <input type="number" id="cat-min-order" value="30" min="0">
                                 </div>
                                 <div class="form-group">
-                                    <label for="cat-max-order">จำนวนสั่งซื้อสูงสุด</label>
+                                    <label for="cat-max-order">จำนวนสั่งซื้อสูงสุด (ต่อหมวดหมู่)</label>
                                     <input type="number" id="cat-max-order" placeholder="ไม่จำกัด" min="0">
                                 </div>
                             </div>
@@ -814,6 +814,12 @@
                                 <label for="prod-stock" data-translate-key="stockQuantityLabel">จำนวนคงเหลือ</label>
                                 <input type="number" id="prod-stock" value="-1" required>
                             </div>
+                            <!-- ===== START: UPDATE (Max Order Quantity per Product) ===== -->
+                            <div class="form-group">
+                                <label for="prod-max-order" data-translate-key="maxOrderPerProductLabel">จำนวนสั่งซื้อสูงสุด (ต่อชิ้น)</label>
+                                <input type="number" id="prod-max-order" placeholder="ไม่จำกัด (เว้นว่าง)" min="0">
+                            </div>
+                            <!-- ===== END: UPDATE ===== -->
                             <div class="form-group">
                                 <label for="prod-unavailable-message" data-translate-key="unavailableMessageLabel">ข้อความเมื่อปิดการขาย</label>
                                 <input type="text" id="prod-unavailable-message" placeholder="เช่น 'สินค้าหมดชั่วคราว', 'Pre-order'">
@@ -865,13 +871,24 @@
                         <h3 id="admin-current-category-name"></h3>
                         <div class="table-wrapper">
                             <table id="admin-prod-table">
-                                <thead><tr><th data-translate-key="tableHeaderIcon">ไอค่อน</th><th data-translate-key="tableHeaderName">ชื่อ</th><th data-translate-key="tableHeaderLevel">เลเวล</th><th data-translate-key="tableHeaderStock">คงเหลือ</th><th data-translate-key="tableHeaderManage">จัดการ</th></tr></thead>
+                                <!-- ===== START: UPDATE (Max Order Column) ===== -->
+                                <thead><tr><th data-translate-key="tableHeaderIcon">ไอค่อน</th><th data-translate-key="tableHeaderName">ชื่อ</th><th data-translate-key="tableHeaderLevel">เลเวล</th><th data-translate-key="tableHeaderStock">คงเหลือ</th><th data-translate-key="tableHeaderMaxOrder">สูงสุด</th><th data-translate-key="tableHeaderManage">จัดการ</th></tr></thead>
+                                <!-- ===== END: UPDATE ===== -->
                                 <tbody id="admin-prod-list"></tbody>
                             </table>
                         </div>
                     </div>
                 </div>
                 <div id="admin-sub-stock-settings" class="admin-sub-content">
+                    <div class="card admin-section">
+                        <h2 data-translate-key="lowStockSettingsTitle">ตั้งค่าคงเหลือ</h2>
+                        <p data-translate-key="lowStockSettingsInfo">กำหนดจำนวนสินค้าขั้นต่ำสำหรับแต่ละหมวดหมู่ (จากฐานข้อมูล) เพื่อรับการแจ้งเตือนในหน้า Dashboard</p>
+                        <div id="stock-settings-category-list" class="low-stock-category-list"></div>
+                        <button id="save-stock-settings-btn" class="btn btn-primary" data-translate-key="saveSettingsBtn" style="margin-top: 20px;">บันทึกการตั้งค่า</button>
+                    </div>
+                </div>
+            </div>
+            <div id="admin-sub-stock-settings" class="admin-sub-content">
                     <div class="card admin-section">
                         <h2 data-translate-key="lowStockSettingsTitle">ตั้งค่าคงเหลือ</h2>
                         <p data-translate-key="lowStockSettingsInfo">กำหนดจำนวนสินค้าขั้นต่ำสำหรับแต่ละหมวดหมู่ (จากฐานข้อมูล) เพื่อรับการแจ้งเตือนในหน้า Dashboard</p>
@@ -1255,6 +1272,10 @@
             </div>
             <p id="order-modal-prompt" data-translate-key="copyOrderPrompt">กรุณาคัดลอกข้อความด้านล่างเพื่อส่งให้ทางร้าน</p>
             <div id="order-details" class="no-copy"></div>
+            <!-- ===== START: In-App Browser Copy Fix ===== -->
+            <!-- Add a hidden textarea for the document.execCommand('copy') fallback -->
+            <textarea id="copy-fallback-textarea" style="position: absolute; left: -9999px; opacity: 0;"></textarea>
+            <!-- ===== END: In-App Browser Copy Fix ===== -->
             <div class="modal-actions">
                 <button id="copy-order-btn" class="btn btn-danger" data-translate-key="copyOrderBtn">คัดลอกออเดอร์</button>
                 <button id="close-order-modal-btn" class="btn btn-secondary" data-translate-key="closeBtn">ปิด</button>
