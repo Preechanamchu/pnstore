@@ -1317,6 +1317,55 @@ document.addEventListener('DOMContentLoaded', () => {
         return { price: 0, type: 'ไม่ได้ตั้งราคา' };
     };
 
+    // ===== START: Clipboard Helper for In-App Browsers =====
+    // This function attempts the modern clipboard API first, then falls back
+    // to the older execCommand method for compatibility with In-App browsers
+    // (like Facebook, LINE) that don't support the modern API.
+    const copyTextToClipboard = (text) => {
+        return new Promise((resolve, reject) => {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text)
+                    .then(resolve)
+                    .catch(() => {
+                        // Fallback if modern API fails (e.g., permissions)
+                        fallbackCopyTextToClipboard(text, resolve, reject);
+                    });
+            } else {
+                // Fallback for older browsers or In-App browsers
+                fallbackCopyTextToClipboard(text, resolve, reject);
+            }
+        });
+    };
+
+    const fallbackCopyTextToClipboard = (text, resolve, reject) => {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        
+        // Make the textarea invisible and out of the way
+        textArea.style.position = "fixed";
+        textArea.style.top = "-9999px";
+        textArea.style.left = "-9999px";
+        textArea.style.opacity = "0";
+
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+
+        try {
+            const successful = document.execCommand('copy');
+            if (successful) {
+                resolve();
+            } else {
+                reject(new Error('Fallback copy command was unsuccessful.'));
+            }
+        } catch (err) {
+            reject(err);
+        }
+
+        document.body.removeChild(textArea);
+    };
+    // ===== END: Clipboard Helper for In-App Browsers =====
+
     const checkOrderValidation = () => {
         let minOrderMessages = [], maxOrderMessages = [];
         const itemsByCategory = {};
@@ -1397,9 +1446,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if(tab) tab.classList.add('active');
             loadProductsForCategory(activeCategoryId);
         }
-    });
 
-    const createConfirmOrderSummary = (orderNumber) => {
+        const createConfirmOrderSummary = (orderNumber) => {
         const lang = appData.shopSettings.language;
         const currencySuffix = lang === 'th' ? 'บาท' : 'THB';
         let summaryText = "";
@@ -1685,9 +1733,13 @@ cartDetails.addEventListener('click', (e) => {
             // Re-create the summary text, this time *with* the new order number.
             const orderText = createConfirmOrderSummary(orderNumber);
             
-            // Copy the complete text to the clipboard.
-            await navigator.clipboard.writeText(orderText);
-            // ===== END: MODIFICATION =====
+            // ===== START: IN-APP BROWSER CLIPBOARD FIX =====
+            // Old way: await navigator.clipboard.writeText(orderText);
+            // New way: Use the helper function which has a fallback
+            await copyTextToClipboard(orderText);
+            // ===== END: IN-APP BROWSER CLIPBOARD FIX =====
+            
+            // ===== END: MODIFICATION (Order Number Fix) =====
 
 
             const totalMatch = orderText.match(/ยอดรวมสุทธิ: ([\d,.]+) /) || orderText.match(/Grand Total: ([\d,.]+) /) || orderText.match(/ยอดรวม: ([\d,.]+) /) || orderText.match(/Total: ([\d,.]+) /);
@@ -1757,7 +1809,7 @@ cartDetails.addEventListener('click', (e) => {
 
         } catch (err) {
             console.error('Order processing failed: ', err);
-            alert('เกิดข้อผิดพลาดในการบันทึกออเดอร์: ' + err.message);
+            alert('เกิดข้อผิดพลาดในการคัดลอกหรือบันทึกออเดอร์: ' + err.message);
             document.getElementById('copy-success-modal').style.display = 'none';
         }
     });
@@ -2822,8 +2874,15 @@ cartDetails.addEventListener('click', (e) => {
     document.getElementById('copy-customer-link-btn').addEventListener('click', () => {
         const linkInput = document.getElementById('customer-link-display');
         linkInput.select();
-        document.execCommand('copy');
-        alert('คัดลอกลิงก์สำเร็จ!');
+        // ===== IN-APP BROWSER CLIPBOARD FIX =====
+        // Use execCommand as a fallback for reliability
+        try {
+            document.execCommand('copy');
+            alert('คัดลอกลิงก์สำเร็จ!');
+        } catch (err) {
+            alert('คัดลอกล้มเหลว! กรุณาคัดลอกด้วยตนเอง');
+        }
+        // ===== END: IN-APP BROWSER CLIPBOARD FIX =====
     });
 
     document.getElementById('save-shop-info-btn').addEventListener('click', async (e) => {
@@ -5197,4 +5256,5 @@ cartDetails.addEventListener('click', (e) => {
             }
         }
         // ===== END: PRICE TAG UPDATE (Modified function) =====
+    });
     });
