@@ -2853,7 +2853,7 @@ cartDetails.addEventListener('click', (e) => {
                     <td>${prod.stock === -1 ? '∞' : prod.stock}</td>
                     <td>${maxOrderText}</td> 
                     <td>
-                {/* ===== END: UPDATE ===== */}
+                
                         <button class="btn btn-secondary btn-small btn-edit" data-id="${prod.id}">${translations[lang].editBtn}</button>
                         <button class="btn btn-danger btn-small btn-delete" data-id="${prod.id}">${translations[lang].deleteBtn}</button>
                         <label class="toggle-switch">
@@ -5020,8 +5020,8 @@ cartDetails.addEventListener('click', (e) => {
                     showSaveFeedback(e.target);
                     const theme = e.target.dataset.theme;
                     const settings = appData.shopSettings.effects.seasonal[theme];
-                    settings.enabled = document.getElementById(`seasonal-effect-${theme}-toggle`).checked;
-                    settings.intensity = document.getElementById(`seasonal-effect-${theme}-intensity`).value;
+                    settings.enabled = document.getElementById(`seasonal-effect-${themeKey}-toggle`).checked;
+                    settings.intensity = document.getElementById(`seasonal-effect-${themeKey}-intensity`).value;
 
                     if (settings.enabled) {
                         Object.keys(appData.shopSettings.effects.seasonal).forEach(key => {
