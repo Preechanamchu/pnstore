@@ -391,6 +391,11 @@ document.addEventListener('DOMContentLoaded', () => {
             sortByNameEn: "เรียงตามอักษร A-Z",
             outOfStockTemporarily: "หมดชั่วคราว",
             unavailableMessageLabel: "ข้อความเมื่อปิดการขาย",
+            // ===== START: UPDATE (Translations) =====
+            maxOrderPerProductLabel: "จำนวนสั่งซื้อสูงสุด (ต่อชิ้น)",
+            tableHeaderMaxOrder: "สูงสุด",
+            quotaExceeded: "เกินโควต้าที่กำหนด",
+            // ===== END: UPDATE =====
         },
         en: {
 // ... (rest of english translations)
@@ -542,6 +547,11 @@ document.addEventListener('DOMContentLoaded', () => {
             sortByNameEn: "Sort by Name (EN)",
             outOfStockTemporarily: "Temporarily out of stock",
             unavailableMessageLabel: "Message when unavailable",
+            // ===== START: UPDATE (Translations) =====
+            maxOrderPerProductLabel: "Max Order Quantity (per item)",
+            tableHeaderMaxOrder: "Max",
+            quotaExceeded: "Exceeded quota",
+            // ===== END: UPDATE =====
         }
     };
 
@@ -1247,7 +1257,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const productId = parseInt(card.dataset.id);
         const product = appData.allProducts.find(p => p.id === productId);
         const category = appData.categories.find(c => c.id === product?.category_id);
-        const maxOrder = category?.max_order_quantity;
+        const maxOrderInCategory = category?.max_order_quantity; // โควต้าหมวดหมู่ (ของเดิม)
+        const lang = appData.shopSettings.language;
 
         let operation = 0;
 
@@ -1258,17 +1269,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (operation !== 0) {
             let currentQuantity = appData.cart[productId] || 0;
-            let newQuantity = Math.max(0, currentQuantity + operation);
+            let proposedQuantity = Math.max(0, currentQuantity + operation); // จำนวนที่ต้องการสั่ง
 
-            if (maxOrder && maxOrder > 0 && newQuantity > maxOrder) {
-                newQuantity = maxOrder;
-                 alert(`สั่งซื้อได้สูงสุด ${maxOrder} ชิ้นสำหรับหมวดหมู่นี้`);
+            // ===== START: UPDATE (Max Order Per Item) =====
+            const maxOrderPerItem = product.max_order_quantity; // โควต้าต่อสินค้า (ของใหม่)
+            
+            if (maxOrderPerItem && maxOrderPerItem > 0 && proposedQuantity > maxOrderPerItem) {
+                // ตรวจสอบว่าจำนวนที่ต้องการสั่ง (proposedQuantity) เกินโควต้าสินค้าหรือไม่
+                if (currentQuantity >= maxOrderPerItem) {
+                    // ถ้ามีในตะกร้าเท่ากับหรือมากกว่าโควต้าแล้ว
+                    alert(`${translations[lang].quotaExceeded}: ${maxOrderPerItem} ${lang === 'th' ? 'ชิ้น' : 'items'}`);
+                    return; // ไม่ต้องทำอะไรเพิ่ม
+                } else {
+                    // ถ้าคลิกแล้วจะเกินโควต้า ให้ตั้งค่าเป็นค่าสูงสุดแทน
+                    proposedQuantity = maxOrderPerItem;
+                    alert(`สามารถสั่งได้สูงสุด ${maxOrderPerItem} ${lang === 'th' ? 'ชิ้น' : 'items'} (${translations[lang].quotaExceeded})`);
+                }
+            }
+            // ===== END: UPDATE =====
+
+            // ตรวจสอบโควต้าหมวดหมู่ (ของเดิม)
+            if (maxOrderInCategory && maxOrderInCategory > 0 && proposedQuantity > maxOrderInCategory) {
+                 // หมายเหตุ: ตรรกะนี้อาจจะต้องปรับปรุงถ้าหากมีโควต้าสินค้าและโควต้าหมวดหมู่พร้อมกัน
+                proposedQuantity = maxOrderInCategory;
+                 alert(`สั่งซื้อได้สูงสุด ${maxOrderInCategory} ชิ้นสำหรับหมวดหมู่นี้`);
             }
 
-            if (newQuantity === 0) {
+            if (proposedQuantity === 0) {
                 delete appData.cart[productId];
             } else {
-                appData.cart[productId] = newQuantity;
+                appData.cart[productId] = proposedQuantity;
             }
 
             localStorage.setItem('warishayday_cart', JSON.stringify(appData.cart));
@@ -1586,17 +1616,36 @@ cartDetails.addEventListener('click', (e) => {
         if (!productId) return;
 
         let currentQuantity = appData.cart[productId] || 0;
-        let product = appData.allProducts.find(p => p.id === productId);
-        let category = appData.categories.find(c => c.id === product?.category_id);
-        const maxOrder = category?.max_order_quantity;
+        // ===== START: UPDATE (Max Order Per Item) =====
+        const product = appData.allProducts.find(p => p.id === productId);
+        const maxOrderPerItem = product ? product.max_order_quantity : null;
+        const lang = appData.shopSettings.language;
+        // ===== END: UPDATE =====
+
+        const category = appData.categories.find(c => c.id === product?.category_id);
+        const maxOrderInCategory = category?.max_order_quantity;
 
         if (target.classList.contains('btn-op')) {
             const operation = parseInt(target.dataset.op);
             let newQuantity = Math.max(0, currentQuantity + operation);
 
-            if (maxOrder && maxOrder > 0 && newQuantity > maxOrder) {
-                newQuantity = maxOrder;
-                alert(`สั่งซื้อได้สูงสุด ${maxOrder} ชิ้นสำหรับหมวดหมู่นี้`);
+            // ===== START: UPDATE (Max Order Per Item) =====
+            if (operation > 0 && maxOrderPerItem && maxOrderPerItem > 0 && newQuantity > maxOrderPerItem) {
+                if (currentQuantity >= maxOrderPerItem) {
+                    // ถ้ามีในตะกร้าเท่ากับหรือมากกว่าโควต้าแล้ว
+                    alert(`${translations[lang].quotaExceeded}: ${maxOrderPerItem} ${lang === 'th' ? 'ชิ้น' : 'items'}`);
+                    return; // ไม่ต้องทำอะไรเพิ่ม
+                } else {
+                    // ถ้าคลิกแล้วจะเกินโควต้า ให้ตั้งค่าเป็นค่าสูงสุดแทน
+                    newQuantity = maxOrderPerItem;
+                    alert(`สามารถสั่งได้สูงสุด ${maxOrderPerItem} ${lang === 'th' ? 'ชิ้น' : 'items'} (${translations[lang].quotaExceeded})`);
+                }
+            }
+            // ===== END: UPDATE =====
+
+            if (maxOrderInCategory && maxOrderInCategory > 0 && newQuantity > maxOrderInCategory) {
+                newQuantity = maxOrderInCategory;
+                alert(`สั่งซื้อได้สูงสุด ${maxOrderInCategory} ชิ้นสำหรับหมวดหมู่นี้`);
             }
 
             if (newQuantity === 0) {
@@ -1686,8 +1735,29 @@ cartDetails.addEventListener('click', (e) => {
             const orderText = createConfirmOrderSummary(orderNumber);
             
             // Copy the complete text to the clipboard.
-            await navigator.clipboard.writeText(orderText);
-            // ===== END: MODIFICATION =====
+            // ===== START: UPDATE (In-App Browser Copy Fix) =====
+            try {
+                // Try the modern API first
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(orderText);
+                } else {
+                    // Fallback for older browsers / In-App Browsers (Facebook, LINE)
+                    const fallbackTextarea = document.getElementById('copy-fallback-textarea');
+                    fallbackTextarea.value = orderText;
+                    fallbackTextarea.style.display = 'block'; // Must be visible to select
+                    fallbackTextarea.select();
+                    fallbackTextarea.setSelectionRange(0, 99999); // For mobile
+                    document.execCommand('copy');
+                    fallbackTextarea.style.display = 'none'; // Hide it again
+                }
+            } catch (copyErr) {
+                console.error('Clipboard copy failed:', copyErr);
+                // If even the fallback fails, alert the user (though unlikely)
+                alert('ไม่สามารถคัดลอกอัตโนมัติได้ กรุณาคัดลอกด้วยตนเอง');
+                // We still continue to save the order, even if copy failed.
+            }
+            // ===== END: UPDATE (In-App Browser Copy Fix) =====
+            // ===== END: MODIFICATION (Order Number Fix) =====
 
 
             const totalMatch = orderText.match(/ยอดรวมสุทธิ: ([\d,.]+) /) || orderText.match(/Grand Total: ([\d,.]+) /) || orderText.match(/ยอดรวม: ([\d,.]+) /) || orderText.match(/Total: ([\d,.]+) /);
@@ -2188,7 +2258,7 @@ cartDetails.addEventListener('click', (e) => {
                 renderProductDashboard();
             }
         } 
-        // ===== นี่คือจุดตัด Part 1 ครับ =====
+
         else if (activeAdminMenu === 'manage-account' && canAccess('manage-account')) {
             const container = document.getElementById('admin-menu-manage-account');
             container.style.display = 'block';
@@ -2769,12 +2839,17 @@ cartDetails.addEventListener('click', (e) => {
             productsInCategory.forEach(prod => {
                 const prodName = (lang === 'en' && prod.name_en) ? prod.name_en : prod.name;
                 const row = document.createElement('tr');
+                
+                // ===== START: UPDATE (Max Order Column) =====
+                const maxOrderText = prod.max_order_quantity ? prod.max_order_quantity : (lang === 'th' ? 'ไม่จำกัด' : 'N/A');
                 row.innerHTML = `
                     <td>${prod.icon ? `<img src="${prod.icon}" alt="${prodName}">` : 'ไม่มี'}</td>
                     <td>${prodName}</td>
                     <td>${prod.level}</td>
                     <td>${prod.stock === -1 ? '∞' : prod.stock}</td>
+                    <td>${maxOrderText}</td>
                     <td>
+                {/* ===== END: UPDATE ===== */}
                         <button class="btn btn-secondary btn-small btn-edit" data-id="${prod.id}">${translations[lang].editBtn}</button>
                         <button class="btn btn-danger btn-small btn-delete" data-id="${prod.id}">${translations[lang].deleteBtn}</button>
                         <label class="toggle-switch">
@@ -3162,6 +3237,7 @@ cartDetails.addEventListener('click', (e) => {
             else if (prodFile) iconData = await readFileAsBase64(prodFile);
             else if(existingProduct) iconData = existingProduct.icon || '';
 
+            // ===== START: UPDATE (Max Order Per Item) =====
             const productData = {
                 name: document.getElementById('prod-name').value,
                 name_en: document.getElementById('prod-name-en').value,
@@ -3171,7 +3247,9 @@ cartDetails.addEventListener('click', (e) => {
                 is_available: existingProduct ? existingProduct.is_available : true,
                 icon: iconData,
                 unavailable_message: document.getElementById('prod-unavailable-message').value,
+                max_order_quantity: parseInt(document.getElementById('prod-max-order').value) || null // Get value from new field
             };
+            // ===== END: UPDATE =====
 
             if (!productData.name) {
                 alert('กรุณากรอกชื่อสินค้า (ภาษาไทย)');
@@ -3223,6 +3301,9 @@ cartDetails.addEventListener('click', (e) => {
                     document.getElementById('prod-name-en').value = product.name_en || '';
                     document.getElementById('prod-level').value = product.level;
                     document.getElementById('prod-stock').value = product.stock;
+                    // ===== START: UPDATE (Max Order Per Item) =====
+                    document.getElementById('prod-max-order').value = product.max_order_quantity || ''; // Load value
+                    // ===== END: UPDATE =====
                     document.getElementById('prod-category').value = product.category_id;
                     document.getElementById('prod-icon-preview').style.backgroundImage = product.icon ? `url(${product.icon})` : 'none';
                     document.getElementById('prod-icon-url').value = product.icon?.startsWith('http') ? product.icon : '';
@@ -3327,6 +3408,9 @@ cartDetails.addEventListener('click', (e) => {
             editingProductId = null;
             document.getElementById('product-form').reset();
             document.getElementById('prod-stock').value = -1;
+            // ===== START: UPDATE (Max Order Per Item) =====
+            document.getElementById('prod-max-order').value = ''; // Reset new field
+            // ===== END: UPDATE =====
             document.getElementById('prod-unavailable-message').value = '';
             document.getElementById('cancel-edit-btn').style.display = 'none';
             document.getElementById('prod-icon-preview').style.backgroundImage = 'none';
