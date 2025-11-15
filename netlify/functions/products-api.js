@@ -10,18 +10,25 @@ const handler = async (event, context) => {
         // ===== START: MODIFICATION =====
         // Add a GET handler to fetch ALL products for the admin panel
         if (httpMethod === 'GET') {
+            // ===== START: UPDATE (Add max_order_quantity) =====
+            // ดึงข้อมูลทั้งหมด รวมถึง max_order_quantity
             const result = await db.query('SELECT * FROM products ORDER BY category_id, level ASC');
+            // ===== END: UPDATE =====
             return { statusCode: 200, body: JSON.stringify(result.rows) };
         }
         // ===== END: MODIFICATION =====
 
         if (httpMethod === 'POST') { // Create
-            // Added 'unavailable_message' to the creation logic
-            const { name, name_en, level, category_id, stock, is_available, icon, unavailable_message } = JSON.parse(body);
+            // ===== START: UPDATE (Add max_order_quantity) =====
+            // เพิ่ม max_order_quantity จาก body
+            const { name, name_en, level, category_id, stock, is_available, icon, unavailable_message, max_order_quantity } = JSON.parse(body);
+            
+            // เพิ่ม max_order_quantity ลงในคำสั่ง INSERT (ใช้ $9)
             await db.query(
-                'INSERT INTO products (name, name_en, level, category_id, stock, is_available, icon, unavailable_message) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-                [name, name_en, level, category_id, stock, is_available, icon, unavailable_message]
+                'INSERT INTO products (name, name_en, level, category_id, stock, is_available, icon, unavailable_message, max_order_quantity) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+                [name, name_en, level, category_id, stock, is_available, icon, unavailable_message, max_order_quantity || null] // || null เพื่อป้องกัน error ถ้าค่าเป็น undefined
             );
+            // ===== END: UPDATE =====
             return { statusCode: 201, body: JSON.stringify({ message: 'Product created' }) };
         }
 
@@ -34,12 +41,23 @@ const handler = async (event, context) => {
             let queryIndex = 1;
 
             // List of allowed fields to prevent SQL injection
-            const allowedFields = ['name', 'name_en', 'level', 'category_id', 'stock', 'is_available', 'icon', 'unavailable_message'];
+            // ===== START: UPDATE (Add max_order_quantity) =====
+            // เพิ่ม 'max_order_quantity' ใน list ที่อนุญาตให้อัปเดต
+            const allowedFields = ['name', 'name_en', 'level', 'category_id', 'stock', 'is_available', 'icon', 'unavailable_message', 'max_order_quantity'];
+            // ===== END: UPDATE =====
 
             for (const field of allowedFields) {
                 if (updates[field] !== undefined) {
-                    fields.push(`${field} = $${queryIndex++}`);
-                    values.push(updates[field]);
+                    // ===== START: UPDATE (Handle null for max_order_quantity) =====
+                    // ถ้า field คือ max_order_quantity และค่าที่ส่งมาเป็น null หรือ '' ให้ตั้งเป็น null ใน DB
+                    if (field === 'max_order_quantity' && (updates[field] === null || updates[field] === '')) {
+                        fields.push(`${field} = $${queryIndex++}`);
+                        values.push(null);
+                    } else {
+                        fields.push(`${field} = $${queryIndex++}`);
+                        values.push(updates[field]);
+                    }
+                    // ===== END: UPDATE =====
                 }
             }
 
