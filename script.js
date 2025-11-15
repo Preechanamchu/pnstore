@@ -2841,13 +2841,17 @@ cartDetails.addEventListener('click', (e) => {
                 const row = document.createElement('tr');
                 
                 // ===== START: UPDATE (Max Order Column) =====
-                const maxOrderText = prod.max_order_quantity ? prod.max_order_quantity : (lang === 'th' ? 'ไม่จำกัด' : 'N/A');
+                // ตรวจสอบค่า max_order_quantity ถ้าไม่มี (null/undefined/0) ให้แสดงว่า "ไม่จำกัด"
+                const maxOrderText = (prod.max_order_quantity && prod.max_order_quantity > 0)
+                    ? prod.max_order_quantity 
+                    : (lang === 'th' ? 'ไม่จำกัด' : 'N/A');
+                    
                 row.innerHTML = `
                     <td>${prod.icon ? `<img src="${prod.icon}" alt="${prodName}">` : 'ไม่มี'}</td>
                     <td>${prodName}</td>
                     <td>${prod.level}</td>
                     <td>${prod.stock === -1 ? '∞' : prod.stock}</td>
-                    <td>${maxOrderText}</td>
+                    <td>${maxOrderText}</td> 
                     <td>
                 {/* ===== END: UPDATE ===== */}
                         <button class="btn btn-secondary btn-small btn-edit" data-id="${prod.id}">${translations[lang].editBtn}</button>
