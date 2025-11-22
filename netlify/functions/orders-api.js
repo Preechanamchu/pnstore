@@ -3,93 +3,156 @@ const db = require('./database');
 
 exports.handler = async (event, context) => {
   const { httpMethod } = event;
-  const { id } = event.queryStringParameters || {};
+  const queryParams = event.queryStringParameters || {};
+  const id = queryParams.id;
+
+  // Common headers เพื่อรองรับ CORS (ให้ยิงมาจากหน้าเว็บได้โดยไม่ติด permission)
+  const headers = {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*', 
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS'
+  };
+
+  // รองรับ Preflight request
+  if (httpMethod === 'OPTIONS') {
+    return { statusCode: 200, headers, body: '' };
+  }
 
   try {
-    // --- START: Handle different request methods ---
     switch (httpMethod) {
       case 'POST':
-        // Create a new order
-        return await createOrder(JSON.parse(event.body));
+        // สร้างออเดอร์ใหม่ (ลูกค้าทั่วไปใช้ได้ ไม่ต้องล็อกอิน)
+        return await createOrder(JSON.parse(event.body), headers);
       
       case 'PUT':
-        // Update an existing order (e.g., confirm or cancel)
-        if (!id) return { statusCode: 400, body: JSON.stringify({ error: 'Order ID is required for updates.' }) };
-        return await updateOrder(id, JSON.parse(event.body));
+        // อัพเดทสถานะ (เช่น กดยืนยัน หรือ ยกเลิก)
+        if (!id) return { statusCode: 400, headers, body: JSON.stringify({ error: 'Order ID is required for updates.' }) };
+        return await updateOrder(id, JSON.parse(event.body), headers);
 
       case 'DELETE':
-        // Delete an order
-        if (!id) return { statusCode: 400, body: JSON.stringify({ error: 'Order ID is required for deletion.' }) };
-        return await deleteOrder(id);
+        // ลบออเดอร์
+        if (!id) return { statusCode: 400, headers, body: JSON.stringify({ error: 'Order ID is required for deletion.' }) };
+        return await deleteOrder(id, headers);
 
       default:
-        return { statusCode: 405, body: 'Method Not Allowed' };
+        return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method Not Allowed' }) };
     }
-    // --- END: Handle different request methods ---
   } catch (error) {
     console.error('Error in orders-api function:', error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'An internal server error occurred.' }),
+      headers,
+      body: JSON.stringify({ error: `An internal server error occurred: ${error.message}` }),
     };
   }
 };
 
-// --- Function to CREATE a new order ---
-async function createOrder(orderData) {
-  // Basic validation
+// --- ฟังก์ชันสร้างออเดอร์ใหม่ (พร้อมระบบ Retry ป้องกันเลขซ้ำ) ---
+async function createOrder(orderData, headers) {
+  // ตรวจสอบข้อมูลเบื้องต้น
   if (!orderData || !orderData.id || !orderData.items || typeof orderData.total === 'undefined') {
-    return { statusCode: 400, body: JSON.stringify({ error: 'Invalid order data provided.' }) };
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid order data provided.' }) };
   }
 
   const client = await db.pool.connect();
+  
   try {
-    // Insert the new order with a 'new' status. Stock is NOT updated at this stage.
-    const insertOrderQuery = `
-      INSERT INTO orders (order_id, timestamp, total, items, status, promo_applied)
-      VALUES ($1, $2, $3, $4, $5, $6)
-    `;
-    await client.query(insertOrderQuery, [
-      orderData.id,
-      orderData.timestamp,
-      orderData.total,
-      JSON.stringify(orderData.items),
-      'new', // All new orders start with 'new' status
-      JSON.stringify(orderData.promoApplied || null)
-    ]);
+    // ฟังก์ชันย่อยสำหรับบันทึกลงฐานข้อมูล
+    const tryInsert = async (orderIdToUse) => {
+      const insertOrderQuery = `
+        INSERT INTO orders (order_id, timestamp, total, items, status, promo_applied)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `;
+      
+      // แปลงข้อมูลเป็น JSON string ถ้าจำเป็น (ป้องกัน error กับฐานข้อมูลบางประเภท)
+      const itemsJson = typeof orderData.items === 'object' ? JSON.stringify(orderData.items) : orderData.items;
+      const promoJson = orderData.promoApplied ? (typeof orderData.promoApplied === 'object' ? JSON.stringify(orderData.promoApplied) : orderData.promoApplied) : null;
+
+      await client.query(insertOrderQuery, [
+        orderIdToUse,
+        orderData.timestamp,
+        orderData.total,
+        itemsJson,
+        'new', // สถานะเริ่มต้นคือ 'new' เสมอ
+        promoJson
+      ]);
+    };
+
+    // --- RETRY LOGIC (หัวใจสำคัญ) ---
+    // พยายามบันทึก ถ้าเจอเลขซ้ำ (Error Code 23505) ให้เติมเลขสุ่มต่อท้ายแล้วลองใหม่
+    let attempts = 0;
+    const maxAttempts = 5;
+    let currentId = orderData.id;
+    let success = false;
+
+    while (attempts < maxAttempts && !success) {
+      try {
+        await tryInsert(currentId);
+        success = true; // ถ้าบันทึกผ่าน บรรทัดนี้จะทำงานและหลุด loop
+      } catch (err) {
+        // เช็ค error code '23505' (Unique Violation / Duplicate Key) ของ PostgreSQL
+        if (err.code === '23505') {
+          attempts++;
+          console.warn(`Duplicate Order ID: ${currentId}. Retrying attempt ${attempts}...`);
+          
+          // สร้าง ID ใหม่โดยการเติมตัวเลขสุ่ม เช่น จาก WHD.../8888 เป็น WHD.../8888-123
+          // เพื่อให้บันทึกได้แน่นอน ไม่ต้องให้ลูกค้ากดใหม่
+          const randomSuffix = Math.floor(Math.random() * 1000);
+          currentId = `${orderData.id}-${randomSuffix}`; 
+        } else {
+          throw err; // ถ้าเป็น error อื่น (เช่น ต่อ DB ไม่ได้) ให้โยน error ออกไปปกติ
+        }
+      }
+    }
+
+    if (!success) {
+      throw new Error('Failed to generate a unique Order ID after multiple attempts.');
+    }
+    // --- จบ RETRY LOGIC ---
 
     return {
       statusCode: 201,
-      body: JSON.stringify({ message: 'Order created successfully and is awaiting confirmation.' }),
+      headers,
+      body: JSON.stringify({ 
+        message: 'Order created successfully.',
+        orderId: currentId // ส่งเลข Order จริงที่บันทึกได้กลับไป
+      }),
     };
+
+  } catch (err) {
+    console.error('Create Order Error:', err);
+    return { statusCode: 500, headers, body: JSON.stringify({ error: 'Failed to save order: ' + err.message }) };
   } finally {
     client.release();
   }
 }
 
-// --- Function to UPDATE an order's status ---
-async function updateOrder(orderId, updateData) {
+// --- ฟังก์ชันอัพเดทสถานะออเดอร์ ---
+async function updateOrder(orderId, updateData, headers) {
   const { status } = updateData;
   if (!status) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'Status is required for update.' }) };
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Status is required for update.' }) };
   }
 
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
 
-    // Get the order's current state to prevent re-processing
+    // ล็อกแถวข้อมูลเพื่อป้องกันการอัพเดทชนกัน
     const { rows } = await client.query('SELECT status, items FROM orders WHERE order_id = $1 FOR UPDATE', [orderId]);
     if (rows.length === 0) {
       await client.query('ROLLBACK');
-      return { statusCode: 404, body: JSON.stringify({ error: 'Order not found.' }) };
+      return { statusCode: 404, headers, body: JSON.stringify({ error: 'Order not found.' }) };
     }
 
     const currentStatus = rows[0].status;
-    const items = rows[0].items;
+    
+    let items = rows[0].items;
+    if (typeof items === 'string') {
+        try { items = JSON.parse(items); } catch(e) {}
+    }
 
-    // *** IMPORTANT LOGIC ***
-    // Only deduct stock if the order is being confirmed (moving from 'new' to 'active')
+    // ตัดสต็อกเฉพาะเมื่อเปลี่ยนสถานะจาก 'new' -> 'active' (ยืนยันออเดอร์)
     if (currentStatus === 'new' && status === 'active') {
       for (const productId in items) {
         const quantity = items[productId];
@@ -104,30 +167,33 @@ async function updateOrder(orderId, updateData) {
       }
     }
     
-    // Always update the order status
     const updateStatusQuery = 'UPDATE orders SET status = $1 WHERE order_id = $2';
     await client.query(updateStatusQuery, [status, orderId]);
 
     await client.query('COMMIT');
-    return { statusCode: 200, body: JSON.stringify({ message: `Order ${orderId} status updated to ${status}.` }) };
+    return { statusCode: 200, headers, body: JSON.stringify({ message: `Order ${orderId} status updated to ${status}.` }) };
 
   } catch (e) {
     await client.query('ROLLBACK');
-    throw e; // Let the main handler catch this
+    console.error('Update Order Error:', e);
+    return { statusCode: 500, headers, body: JSON.stringify({ error: 'Failed to update order: ' + e.message }) };
   } finally {
     client.release();
   }
 }
 
-// --- Function to DELETE an order ---
-async function deleteOrder(orderId) {
+// --- ฟังก์ชันลบออเดอร์ ---
+async function deleteOrder(orderId, headers) {
   const client = await db.pool.connect();
   try {
     const result = await client.query('DELETE FROM orders WHERE order_id = $1', [orderId]);
     if (result.rowCount === 0) {
-        return { statusCode: 404, body: JSON.stringify({ error: 'Order not found.' }) };
+        return { statusCode: 404, headers, body: JSON.stringify({ error: 'Order not found.' }) };
     }
-    return { statusCode: 200, body: JSON.stringify({ message: `Order ${orderId} deleted.` }) };
+    return { statusCode: 200, headers, body: JSON.stringify({ message: `Order ${orderId} deleted.` }) };
+  } catch (err) {
+    console.error('Delete Order Error:', err);
+    return { statusCode: 500, headers, body: JSON.stringify({ error: 'Failed to delete order: ' + err.message }) };
   } finally {
     client.release();
   }
