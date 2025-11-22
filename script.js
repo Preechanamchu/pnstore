@@ -3713,24 +3713,17 @@ cartDetails.addEventListener('click', (e) => {
 
         const generateOrderNumber = () => {
             const format = appData.shopSettings.orderNumberFormat;
-            const counters = appData.shopSettings.orderNumberCounters;
+            // ไม่ใช้ counters แล้ว เปลี่ยนเป็นสุ่มเลข
             const now = new Date();
-            let num = counters[format] || 1;
-
-            counters[format] = num + 1; // Increment the counter
-
-            // ===== START: MODIFICATION (Order Number Fix) =====
-            // The counter is now incremented in memory.
-            // The calling function (copy-order-btn listener in Part 1) is responsible
-            // for calling saveState() AFTER the order is successfully created
-            // to prevent race conditions.
-            // ===== END: MODIFICATION =====
+            
+            // สุ่มเลข 4 หลัก (1000-9999)
+            const randomSuffix = Math.floor(1000 + Math.random() * 9000);
 
             const pad = (n, width) => n.toString().padStart(width, '0');
             switch(format) {
-                case 'format1': return `WHD${(now.getFullYear() + 543).toString().slice(-2)}/${pad(now.getMonth() + 1, 2)}/${pad(num, 4)}`;
-                case 'format2': return `WHD-${now.getFullYear()}${pad(now.getMonth() + 1, 2)}${pad(now.getDate(), 2)}-${pad(num, 4)}`;
-                default: return `WHD-${Math.floor(Math.random() * 90000) + 10000}`; // Fallback, should not happen
+                case 'format1': return `WHD${(now.getFullYear() + 543).toString().slice(-2)}/${pad(now.getMonth() + 1, 2)}/${randomSuffix}`;
+                case 'format2': return `WHD-${now.getFullYear()}${pad(now.getMonth() + 1, 2)}${pad(now.getDate(), 2)}-${randomSuffix}`;
+                default: return `WHD-${Math.floor(10000 + Math.random() * 90000)}`; // 5 digits random
             }
         };
 
